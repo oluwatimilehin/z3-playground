@@ -1,6 +1,6 @@
-from z3 import *
-
 import logging
+
+from z3 import *
 
 logger = logging.getLogger(__name__)
 log_handler = logging.StreamHandler(sys.stdout)
@@ -10,51 +10,48 @@ log_handler.setLevel(logging_level)
 logger.addHandler(log_handler)
 logger.setLevel(logging_level)
 
-if __name__ == "__main__":
-    bit_width = 4
-    x, c1, c2, c3, c4 = BitVecs("x c1 c2 c3 c4", bit_width)
 
-    constraints = []
-    exists_solver = Solver()
-
-    expr = ((x << c1) >> c2) << c3 == x & c4
-    exists_solver.add(expr)
+def exists_for_all(expr, exists, for_all):
+    e_solver = Solver()
+    e_solver.add(expr)
 
     while True:
-        # for i in range(bit_width):
-        #     # Prevent left shifts
-        #     exists_solver.add(Implies(Extract(i, i, x) == 1, c1 < bit_width - i))
-        #     exists_solver.add(Implies(Extract(i, i, x) == 1, c3 < bit_width - i))
-
-        print(f"Exists solver result: {exists_solver.check()}")
-        if exists_solver.check().r != Z3_L_TRUE:
-            logger.error("Could not satisfy exists formula")
+        if e_solver.check().r != Z3_L_TRUE:
+            logger.error(f"Could not satisfy exists formula for {expr}")
             break
 
-        exists_m = exists_solver.model()
-        print(
-            f"c1={exists_m[c1]}, c2={exists_m[c2]}, c3={exists_m[c3]}, c4={exists_m[c4]}, x={exists_m[x]}"
-        )
+        e_model = e_solver.model()
 
-        for_all_solver = Solver()
-        subst_exists_expr = substitute(
-            expr,
-            (c1, exists_m[c1]),
-            (c2, exists_m[c2]),
-            (c3, exists_m[c3]),
-            (c4, exists_m[c4]),
-        )
-        for_all_solver.add(Not(subst_exists_expr))
+        e_vals = {c: e_model[c] for c in exists}
+        substitute_list = [(c, val) for c, val in e_vals.items()]
+        subst_expr = substitute(expr, *substitute_list)
 
-        print(f"Forall solver results: {for_all_solver.check()}")
-        if for_all_solver.check().r != Z3_L_TRUE:
-            logger.info("Constants hold for all x")
-            break
+        f_solver = Solver()
+        f_solver.add(Not(subst_expr))
 
-        for_all_m = for_all_solver.model()
+        if f_solver.check().r == Z3_L_FALSE:
+            return e_vals
 
-        print(f"x={for_all_m[x]}")
-        print(f"Forall solver result: {for_all_solver.check()}")
+        f_model = f_solver.model()
+        counter_examples = [(f, f_model[f]) for f in for_all]
 
-        subst_forall_expr = substitute(expr, (x, for_all_m[x]))
-        exists_solver.add(subst_forall_expr)
+        e_solver.add(substitute(expr, *counter_examples))
+
+
+def left_shift_right_shift():
+    x, c1, c2, c3, c4 = BitVecs("x c1 c2 c3 c4", 4)
+
+    expr = ((x << c1) >> c2) << c3 == x & c4
+    return exists_for_all(expr, [c1, c2, c3, c4], [x])
+
+
+def add_const():
+    x, cst = Ints("x cst")
+    expr = x + cst == x
+
+    return exists_for_all(expr, [cst], [x])
+
+
+if __name__ == "__main__":
+    print(left_shift_right_shift())
+    print(add_const())
