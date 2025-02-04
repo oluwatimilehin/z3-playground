@@ -7,7 +7,7 @@ operators = ["+", "-"]
 
 
 def solve_eq(op: str, val: int, target: int):
-    x = Int("x")
+    x = BitVec("x", 4)
     s = Solver()
     match op:
         case "+":
@@ -29,7 +29,8 @@ def enumerative_synthesis(
     zero = IntVal(0)
     one = IntVal(1)
     minus_one = IntVal(-1)
-    special_vals = [zero, one, minus_one]  # todo: add -1
+
+    special_vals = [zero, one, minus_one]
     input_combinations = list(itertools.product(special_vals, repeat=len(inputs)))
 
     # print(input_combinations)
@@ -45,30 +46,28 @@ def enumerative_synthesis(
     for combo in inputs_x_consts:
         s = Solver()
         for i, input in enumerate(inputs):
-            s.add(input == combo[0][i])
+            s.add(input == Int2BV(combo[0][i], 4))
 
         for i, const in enumerate(constants.keys()):
             s.add(const == constants[combo[1][i]])
 
-        # print(
-        #     f"expr: {expr}, expr type: {type(expr)}; target: {target}; target_type: {type(target)}"
-        # )
-
         s.add(expr == target)
-
-        # print(s.assertions())
 
         if s.check().r == Z3_L_TRUE:
             # print(f"found valid combo: {combo}")
-            inputs_subst = [(input, combo[0][i]) for i, input in enumerate(inputs)]
+            inputs_subst = [
+                (input, Int2BV(combo[0][i], 4)) for i, input in enumerate(inputs)
+            ]
             consts_subst = [
                 (const, combo[1][i]) for i, const in enumerate(constants.keys())
             ]
 
             comb = inputs_subst + consts_subst
             valid_combos.append(simplify(substitute(expr, *comb)))
-            break
 
+    # print(
+    #     f"expr: {expr}, expr type: {type(expr)}; target: {target}; target_type: {type(target)}"
+    # )
     # print(f"combos: {valid_combos}")
     return valid_combos
 
@@ -113,8 +112,8 @@ def synthesize(
 
 
 if __name__ == "__main__":
-    x, y, c1, c2, c3 = Ints(
-        "x y c1 c2 c3"
+    x, y, c1, c2, c3 = BitVecs(
+        "x y c1 c2 c3", 4
     )  # TODO: need to figure out how to get this to work for narrower width; seeing issues with wrapping and stuff;
 
     synthesize(
@@ -124,13 +123,13 @@ if __name__ == "__main__":
         target=4,
     )
 
-    synthesize(
-        expr=(x + c1) + (y + c2), inputs=[x, y], constants={c1: 10, c2: 14}, target=24
-    )
+    # synthesize(
+    #     expr=(x + c1) + (y + c2), inputs=[x, y], constants={c1: 10, c2: 14}, target=24
+    # )
 
-    synthesize(
-        expr=(x * c1) - (x * y - c2) + (y + c3),
-        inputs=[x, y],
-        constants={c1: 1, c2: 5, c3: 10},
-        target=6,
-    )
+    # synthesize(
+    #     expr=(x * c1) - (x * y - c2) + (y + c3),
+    #     inputs=[x, y],
+    #     constants={c1: 1, c2: 5, c3: 10},
+    #     target=6,
+    # )
