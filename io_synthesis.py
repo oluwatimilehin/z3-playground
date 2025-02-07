@@ -6,8 +6,8 @@ from z3 import *
 operators = ["+", "-"]
 
 
-def solve_eq(op: str, val: int, target: int):
-    x = BitVec("x", 4)
+def solve_eq(op: str, val: int, target: int, bitwidth: int):
+    x = BitVec("x", bitwidth)
     s = Solver()
     match op:
         case "+":
@@ -24,11 +24,15 @@ def solve_eq(op: str, val: int, target: int):
 
 
 def enumerative_synthesis(
-    expr, inputs: List[BitVecRef], constants: Dict[BitVecRef, int], target: BitVecVal
+    expr,
+    inputs: List[BitVecRef],
+    constants: Dict[BitVecRef, BitVecVal],
+    target: BitVecVal,
+    bitwidth: int,
 ):
-    zero = BitVecVal(0, 4)
-    one = BitVecVal(1, 4)
-    minus_one = BitVecVal(-1, 4)
+    zero = BitVecVal(0, bitwidth)
+    one = BitVecVal(1, bitwidth)
+    minus_one = BitVecVal(-1, bitwidth)
     special_vals = [zero, one, minus_one]
     input_combinations = list(itertools.product(special_vals, repeat=len(inputs)))
 
@@ -60,12 +64,13 @@ def enumerative_synthesis(
 def inductive_synthesis(
     orig_expr: BitVecRef,
     inputs: List[BitVecRef],
-    constants: Dict[BitVecRef, int],
+    constants: Dict[BitVecRef, BitVecVal],
     target: BitVecVal,
+    bitwidth: int,
     depth: int = 3,
 ):
     if depth == 1:
-        return enumerative_synthesis(orig_expr, inputs, constants, target)
+        return enumerative_synthesis(orig_expr, inputs, constants, target, bitwidth)
 
     results = []
     for c, val in constants.items():
@@ -75,10 +80,12 @@ def inductive_synthesis(
 
         for op in operators:
             # TODO: prune no-ops
-            x = solve_eq(op, val, target)
+            x = solve_eq(op, val, target, bitwidth)
             if x == None:
                 continue
-            for expr in inductive_synthesis(orig_expr, inputs, constants, x, depth - 1):
+            for expr in inductive_synthesis(
+                orig_expr, inputs, constants, x, bitwidth, depth - 1
+            ):
                 expr = expr if expr in constants else f"({expr})"
                 results.append(f"{c} {op} {expr}")
 
@@ -90,29 +97,42 @@ def synthesize(
     inputs: List[BitVecRef],
     constants: Dict[BitVecRef, BitVecVal],
     target: BitVecVal,
+    bitwidth: int,
 ):
     print(
-        f"Constants: {constants}, Target: {target}, Results: {inductive_synthesis(expr, inputs, constants, target)}"
+        f"Constants: {constants}, Target: {target}, Results: {inductive_synthesis(expr, inputs, constants, target, bitwidth)}"
     )
 
 
 if __name__ == "__main__":
-    x, y, c1, c2, c3 = BitVecs("x y c1 c2 c3", 4)
-
+    bitwidth = 4
+    x, y, c1, c2, c3 = BitVecs("x y c1 c2 c3", bitwidth)
     synthesize(
         expr=(x + c1) - (y + c2),
         inputs=[x, y],
-        constants={c1: BitVecVal(1, 4), c2: BitVecVal(5, 4)},
-        target=BitVecVal(4, 4),
+        constants={c1: BitVecVal(1, bitwidth), c2: BitVecVal(5, bitwidth)},
+        bitwidth=bitwidth,
+        target=BitVecVal(4, bitwidth),
     )
 
+    bitwidth = 8
+    x, y, c1, c2, c3 = BitVecs("x y c1 c2 c3", bitwidth)
     synthesize(
-        expr=(x + c1) + (y + c2), inputs=[x, y], constants={c1: 10, c2: 14}, target=24
+        expr=(x + c1) + (y + c2),
+        inputs=[x, y],
+        constants={c1: BitVecVal(10, 8), c2: BitVecVal(14, 8)},
+        bitwidth=bitwidth,
+        target=BitVecVal(24, 8),
     )
 
     synthesize(
         expr=(x * c1) - (x * y - c2) + (y + c3),
         inputs=[x, y],
-        constants={c1: 1, c2: 5, c3: 10},
-        target=6,
+        constants={
+            c1: BitVecVal(1, bitwidth),
+            c2: BitVecVal(5, bitwidth),
+            c3: BitVecVal(10, bitwidth),
+        },
+        bitwidth=bitwidth,
+        target=BitVecVal(6, bitwidth),
     )
