@@ -24,51 +24,36 @@ def solve_eq(op: str, val: int, target: int):
 
 
 def enumerative_synthesis(
-    expr, inputs: List[BitVecRef], constants: Dict[BitVecRef, int], target: int
+    expr, inputs: List[BitVecRef], constants: Dict[BitVecRef, int], target: BitVecVal
 ):
-    zero = IntVal(0)
-    one = IntVal(1)
-    minus_one = IntVal(-1)
-
+    zero = BitVecVal(0, 4)
+    one = BitVecVal(1, 4)
+    minus_one = BitVecVal(-1, 4)
     special_vals = [zero, one, minus_one]
     input_combinations = list(itertools.product(special_vals, repeat=len(inputs)))
 
-    # print(input_combinations)
-
     consts_permutation = list(itertools.permutations(constants.keys()))
     inputs_x_consts = list(itertools.product(input_combinations, consts_permutation))
-
-    # print(consts_permutation)
-    # print(inputs_x_consts)
 
     valid_combos = []
 
     for combo in inputs_x_consts:
         s = Solver()
-        for i, input in enumerate(inputs):
-            s.add(input == Int2BV(combo[0][i], 4))
+        inputs_subst = [(input, combo[0][i]) for i, input in enumerate(inputs)]
+        consts_subst = [
+            (const, combo[1][i]) for i, const in enumerate(constants.keys())
+        ]
 
-        for i, const in enumerate(constants.keys()):
-            s.add(const == constants[combo[1][i]])
+        comb = inputs_subst + consts_subst
+        subst_expr = substitute(expr, *comb)
 
-        s.add(expr == target)
+        for const, val in constants.items():
+            s.add(const == val)
+        s.add(subst_expr == target)
 
         if s.check().r == Z3_L_TRUE:
-            # print(f"found valid combo: {combo}")
-            inputs_subst = [
-                (input, Int2BV(combo[0][i], 4)) for i, input in enumerate(inputs)
-            ]
-            consts_subst = [
-                (const, combo[1][i]) for i, const in enumerate(constants.keys())
-            ]
+            valid_combos.append(simplify(subst_expr))
 
-            comb = inputs_subst + consts_subst
-            valid_combos.append(simplify(substitute(expr, *comb)))
-
-    # print(
-    #     f"expr: {expr}, expr type: {type(expr)}; target: {target}; target_type: {type(target)}"
-    # )
-    # print(f"combos: {valid_combos}")
     return valid_combos
 
 
@@ -76,7 +61,7 @@ def inductive_synthesis(
     orig_expr: BitVecRef,
     inputs: List[BitVecRef],
     constants: Dict[BitVecRef, int],
-    target: int,
+    target: BitVecVal,
     depth: int = 3,
 ):
     if depth == 1:
@@ -103,8 +88,8 @@ def inductive_synthesis(
 def synthesize(
     expr: BitVecRef,
     inputs: List[BitVecRef],
-    constants: Dict[BitVecRef, int],
-    target: int,
+    constants: Dict[BitVecRef, BitVecVal],
+    target: BitVecVal,
 ):
     print(
         f"Constants: {constants}, Target: {target}, Results: {inductive_synthesis(expr, inputs, constants, target)}"
@@ -112,24 +97,22 @@ def synthesize(
 
 
 if __name__ == "__main__":
-    x, y, c1, c2, c3 = BitVecs(
-        "x y c1 c2 c3", 4
-    )  # TODO: need to figure out how to get this to work for narrower width; seeing issues with wrapping and stuff;
+    x, y, c1, c2, c3 = BitVecs("x y c1 c2 c3", 4)
 
     synthesize(
         expr=(x + c1) - (y + c2),
         inputs=[x, y],
-        constants={c1: 1, c2: 5},
-        target=4,
+        constants={c1: BitVecVal(1, 4), c2: BitVecVal(5, 4)},
+        target=BitVecVal(4, 4),
     )
 
-    # synthesize(
-    #     expr=(x + c1) + (y + c2), inputs=[x, y], constants={c1: 10, c2: 14}, target=24
-    # )
+    synthesize(
+        expr=(x + c1) + (y + c2), inputs=[x, y], constants={c1: 10, c2: 14}, target=24
+    )
 
-    # synthesize(
-    #     expr=(x * c1) - (x * y - c2) + (y + c3),
-    #     inputs=[x, y],
-    #     constants={c1: 1, c2: 5, c3: 10},
-    #     target=6,
-    # )
+    synthesize(
+        expr=(x * c1) - (x * y - c2) + (y + c3),
+        inputs=[x, y],
+        constants={c1: 1, c2: 5, c3: 10},
+        target=6,
+    )
